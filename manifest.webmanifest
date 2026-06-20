@@ -1,0 +1,12 @@
+{
+  "name": "SandScout — Beach Volleyball Scouting",
+  "short_name": "SandScout",
+  "description": "Beach-native scouting, analysis and broadcast for beach volleyball.",
+  "start_url": "index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a7c8a",
+  "theme_color": "#0a7c8a",
+  "icons": [ { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" } ]
+}
