@@ -104,6 +104,13 @@
   .momrow{display:flex;gap:5px;flex-wrap:wrap}
   .mdot{width:16px;height:16px;border-radius:50%;display:inline-block}
   .mdot.a{background:#0a7c8a}.mdot.b{background:#d6453d}
+  .courtgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;max-width:300px;background:#e9f6f7;padding:5px;border-radius:10px}
+  .cz{position:relative;aspect-ratio:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;border:1px solid var(--line);border-radius:6px;background:#fff;overflow:hidden}
+  .cz .czn{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:rgba(10,124,138,.18);pointer-events:none;z-index:0}
+  .cz .sq{border:0;background:transparent;cursor:pointer;border-radius:3px;z-index:1;padding:0}
+  .cz .sq:active{transform:scale(.9)}
+  .cz .sq.sel{background:var(--ocean)}
+  .courtnet{font-size:11px;font-weight:700;color:var(--ocean-deep);text-align:center;margin-bottom:3px}
   .vdock{background:#0d1f24;color:#cfe;border-bottom:1px solid #075c66;position:sticky;top:108px;z-index:18;padding:8px 12px}
   .vdock.collapsed .vbody{display:none}
   .vdock .vhead{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;cursor:pointer}
@@ -325,6 +332,8 @@ function startRally(){
 }
 let _sel={};
 function chip(label,cls,key,val,sub){return `<div class="opt ${cls||''} ${_sel[key]===val?'sel':''}" data-k="${key}" data-val="${val}">${label}${sub?`<span class="pl">${sub}</span>`:''}</div>`;}
+function zoneGridHTML(id){return `<div class="courtnet">▲ net side</div><div class="courtgrid" id="${id}">`+[1,2,3,4,5,6,7,8,9].map(z=>`<div class="cz"><span class="czn">${z}</span>`+['A','B','C','D'].map(s=>`<button type="button" class="sq" data-zone="${z}" data-sub="${s}" title="${z}${s}"></button>`).join('')+`</div>`).join('')+`</div>`;}
+function wireZoneGrid(id,cb){$$('#'+id+' .sq').forEach(b=>b.onclick=()=>{$$('#'+id+' .sq').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');cb(b.dataset.zone+b.dataset.sub);});}
 
 function renderStep(){
   const c=$("#rallyCard");
@@ -333,16 +342,13 @@ function renderStep(){
       `<div class="step"><div class="q">Server pick the type</div><div class="opts">
          ${chip("Float","","stype","float")}${chip("Jump-float","","stype","jfloat")}${chip("Jump serve","","stype","jump")}
        </div></div>`+
-      `<div class="step"><div class="q">Serve target (opponent court)</div>
-         <div class="splitcourt" id="serveZones">
-           ${[1,2,3,4,5,6].map(z=>`<div class="zone" data-zone="${z}">${z}</div>`).join("")}
-         </div><div class="legend">Optional — tap where the serve landed</div></div>`+
+      `<div class="step"><div class="q">Serve target — tap where it landed (opp. court)</div>${zoneGridHTML('serveZones')}<div class="legend">9 zones × A/B/C/D · optional, for placement precision</div></div>`+
       `<div class="step"><div class="q">Result</div><div class="opts">
          ${chip("Ace","g","sresult","ace")}${chip("In play","","sresult","in")}${chip("Error","b","sresult","err")}
        </div></div>`+
       `<div class="ctrlbar"><button class="btn" id="confirmServe" disabled>Confirm serve</button></div>`;
     bindChips();
-    $$("#serveZones .zone").forEach(z=>z.onclick=()=>{$$("#serveZones .zone").forEach(x=>x.classList.remove("sel"));z.classList.add("sel");S.tmp.zone=z.dataset.zone;});
+    wireZoneGrid("serveZones",v=>S.tmp.zone=v);
     refreshServeBtn();
   } else if(S.phase==="reception"){
     const rt=oppTeam(S.servingTeam), players=S.match.players[rt];
@@ -372,8 +378,9 @@ function renderStep(){
          ${chip("Kill","g","aresult","kill")}${chip("Dug (in play)","","aresult","dug")}
          ${chip("Blocked","b","aresult","block")}${chip("Error","b","aresult","err")}
        </div></div>`+
+      `<div class="step"><div class="q">Landing spot (optional)</div>${zoneGridHTML('atkZones')}</div>`+
       `<div class="ctrlbar"><button class="btn" id="confirmAtk" disabled>Confirm</button></div>`;
-    bindChips();refreshAtkBtn();
+    bindChips();wireZoneGrid('atkZones',v=>S.tmp.azone=v);refreshAtkBtn();
   }
   applySuggestions();
 }
@@ -418,7 +425,8 @@ function confirmRecv(){
 function confirmAtk(){
   const at=S.draft.possession;
   const res=_sel.aresult;
-  S.draft.actions.push({skill:"attack",team:at,player:+_sel.atk,type:_sel.atype,result:res,first:!S.draft.touchAfterServe});
+  S.draft.actions.push({skill:"attack",team:at,player:+_sel.atk,type:_sel.atype,result:res,first:!S.draft.touchAfterServe,zone:S.tmp.azone});
+  S.tmp.azone=undefined;
   S.draft.touchAfterServe=true;
   if(res==="kill"){endRally(at,"Kill");return;}
   if(res==="err"){endRally(oppTeam(at),"Attack error");return;}
@@ -644,16 +652,16 @@ function conditionsBlock(){
     ${line('A','w','With ↗')}${line('A','a','Against ↘')}${line('B','w','With ↗')}${line('B','a','Against ↘')}
     </tbody></table><p class="legend">Side switches every ${swInterval()} pts tracked automatically; “with wind” = serving toward the downwind end.</p></div>`;
 }
-function serveHeat(t){
+function placementHeat(t,skill){
   const z={};let withZone=0;
-  S.rallies.forEach(r=>{const s=r.actions.find(a=>a.skill==="serve"&&a.team===t);if(!s||!s.zone)return;withZone++;z[s.zone]=z[s.zone]||{n:0,ace:0,err:0};z[s.zone].n++;if(s.result==="ace")z[s.zone].ace++;if(s.result==="err")z[s.zone].err++;});
-  if(withZone===0) return `<div class="muted" style="font-size:12px">${teamName(t)}: no serve targets tapped (optional during scouting).</div>`;
+  S.rallies.forEach(r=>r.actions.forEach(s=>{if(s.skill!==skill||s.team!==t||!s.zone)return;withZone++;const zk=(''+s.zone).replace(/[^0-9]/g,'')||'5';z[zk]=z[zk]||{n:0,a:0,e:0};z[zk].n++;if(s.result==='ace'||s.result==='kill')z[zk].a++;if(s.result==='err')z[zk].e++;}));
+  if(withZone===0) return `<div class="muted" style="font-size:12px">${teamName(t)}: none located.</div>`;
   const max=Math.max(...Object.values(z).map(o=>o.n),1);
-  const cells=[1,2,3,4,5,6].map(i=>{const o=z[i]||{n:0,ace:0,err:0};const a=o.n/max;const bg=`rgba(10,124,138,${(0.12+0.78*a).toFixed(2)})`;
-    return `<div class="hc" style="background:${o.n?bg:'#fff'};color:${a>0.5?'#fff':'#14242b'}">${o.n||''}${o.n?`<small style="color:${a>0.5?'#dff':'#3a4f57'}">${o.ace?o.ace+'A ':''}${o.err?o.err+'E':''}</small>`:''}</div>`;}).join("");
-  return `<div style="margin-bottom:10px"><div class="muted" style="font-size:12px;margin-bottom:4px">${teamName(t)} — ${withZone} serve targets located</div><div class="heat">${cells}</div></div>`;
+  const cells=[1,2,3,4,5,6,7,8,9].map(i=>{const o=z[i]||{n:0,a:0,e:0};const al=o.n/max;const bg=`rgba(10,124,138,${(0.12+0.78*al).toFixed(2)})`;
+    return `<div class="hc" style="background:${o.n?bg:'#fff'};color:${al>0.5?'#fff':'#14242b'}">${o.n||''}${o.n?`<small style="color:${al>0.5?'#dff':'#3a4f57'}">${o.a?o.a+'+ ':''}${o.e?o.e+'E':''}</small>`:''}</div>`;}).join("");
+  return `<div style="margin-bottom:10px"><div class="muted" style="font-size:12px;margin-bottom:4px">${teamName(t)} — ${withZone} located</div><div class="heat">${cells}</div></div>`;
 }
-function serveHeatCard(){return `<div class="card"><h3 style="margin-top:0">Serve-target heatmap</h3>${serveHeat("A")}${serveHeat("B")}<p class="legend">Darker = more serves to that zone (receiver court). A = aces, E = errors. Tap serve zones while scouting to populate.</p></div>`;}
+function serveHeatCard(){return `<div class="card"><h3 style="margin-top:0">Serve-target heatmap <span class="muted">(3×3 zones)</span></h3>${placementHeat("A","serve")}${placementHeat("B","serve")}<h3>Attack landing</h3>${placementHeat("A","attack")}${placementHeat("B","attack")}<p class="legend">Darker = more to that zone. “+” = ace/kill, E = error. Tap the 9-zone × A/B/C/D grid while scouting.</p></div>`;}
 function clipLibrary(){
   const hasV=S.rallies.some(r=>r.vt!=null);
   const opts=`<option value="all">All skills</option><option value="serve">Serves</option><option value="ace">Aces</option><option value="kill">Kills</option><option value="block">Blocks</option><option value="err">Errors</option>`;
@@ -964,6 +972,7 @@ function loadDemo(){
   S.score={A:0,B:0};S.sets={A:1,B:0};S.rallies=[];S.servingTeam="A";S.servingPlayerIdx=0;S.active=true;S.setNo=2;
   S.wind={toward:"right",strength:"strong"};S.startEndA="left";
   const rnd=(a)=>a[Math.floor(Math.random()*a.length)];
+  const zr=()=>(""+rnd([1,2,3,4,5,6,7,8,9])+rnd(["A","B","C","D"]));
   for(let i=0;i<46;i++){
     const st=S.servingTeam, rt=oppTeam(st);
     const actions=[];let winner,reason;
@@ -972,10 +981,10 @@ function loadDemo(){
     const ww=S.wind.toward==="calm"?null:(S.wind.toward===oppEnd(sEnd));
     const roll=Math.random();
     const aceBoost=ww===true?0.03:0;
-    if(roll<0.07+aceBoost){actions.push({skill:"serve",team:st,player:srvP,type:stype,result:"ace",zone:""+rnd([1,2,4,5])});winner=st;reason="Ace";}
-    else if(roll<0.20){actions.push({skill:"serve",team:st,player:srvP,type:stype,result:"err",zone:""+rnd([1,3,4,6])});winner=rt;reason="Serve error";}
+    if(roll<0.07+aceBoost){actions.push({skill:"serve",team:st,player:srvP,type:stype,result:"ace",zone:zr()});winner=st;reason="Ace";}
+    else if(roll<0.20){actions.push({skill:"serve",team:st,player:srvP,type:stype,result:"err",zone:zr()});winner=rt;reason="Serve error";}
     else{
-      actions.push({skill:"serve",team:st,player:srvP,type:stype,result:"in",zone:""+rnd([1,1,2,3,4,5,5,6])});
+      actions.push({skill:"serve",team:st,player:srvP,type:stype,result:"in",zone:zr()});
       const recP=rnd([0,1]);const rq=rnd([3,3,2,2,2,1,1,0]);
       actions.push({skill:"reception",team:rt,player:recP,quality:rq});
       let poss=rt,first=true,ended=false,guard=0;
@@ -986,7 +995,7 @@ function loadDemo(){
         else if(ar<0.62)result="err";
         else if(ar<0.72)result="block";
         else result="dug";
-        actions.push({skill:"attack",team:poss,player:atkP,type:atype,result,first});
+        actions.push({skill:"attack",team:poss,player:atkP,type:atype,result,first,zone:zr()});
         if(result==="kill"){winner=poss;reason="Kill";ended=true;}
         else if(result==="err"){winner=oppTeam(poss);reason="Attack error";ended=true;}
         else if(result==="block"){actions.push({skill:"block",team:oppTeam(poss),player:null});winner=oppTeam(poss);reason="Block";ended=true;}
