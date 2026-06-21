@@ -144,7 +144,7 @@
 <body>
 <div class="app">
   <header>
-    <div class="brand">🏐 SandScout <small>SS16.1 · block outcomes</small></div>
+    <div class="brand">🏐 SandScout <small>SS16.2 · full block model</small></div>
     <div class="score" id="scoreboard">
       <span class="sets" id="setsA">0</span>
       <span class="s" id="scoreA">0</span>
@@ -399,9 +399,11 @@ function renderStep(){
          ${chip("Hard","","aspd","hard")}${chip("Soft / shot","","aspd","soft")}
        </div></div>`+
       `<div class="step"><div class="q">Block</div><div class="opts">
-         ${chip("No block","","ablk","none")}${chip("Past block","","ablk","past")}${chip("Off the block","","ablk","off")}
-         ${chip("Stuff → point","b","ablk","stuff")}${chip("Touch → plays on","w","ablk","touch")}
+         ${chip("No block","","ablk","none")}${chip("Past block","","ablk","past")}
+         ${chip("Stuff ↓ (their pt)","b","ablk","stuff")}${chip("Off-block out (your pt)","g","ablk","offout")}
+         ${chip("Block back (you replay)","","ablk","backatt")}${chip("Touch (they play)","w","ablk","touchdef")}
        </div></div>`+
+      `<div class="legend">Stuff = blocked straight down. Off-block out = ball off the block out (your point). Block back = rebounds to you. Touch = deflects to them (they have 2 touches left).</div>`+
       `<div class="step"><div class="q">Defence</div><div class="opts">
          ${chip("Not defended","g","adef","no")}${chip("Defended","","adef","yes")}
        </div></div>`+
@@ -437,7 +439,7 @@ function bindChips(){
 }
 function refreshServeBtn(){const b=$("#confirmServe");if(!b)return;b.disabled=!(_sel.stype&&_sel.sresult);b.onclick=confirmServe;}
 function refreshRecvBtn(){const b=$("#confirmRecv");if(!b)return;b.disabled=!(_sel.recv!==undefined&&_sel.rq!==undefined);b.onclick=confirmRecv;}
-function refreshAtkBtn(){const b=$("#confirmAtk");if(!b)return;const be=_sel.ablk==="stuff"||_sel.ablk==="touch";b.disabled=!(_sel.atk!==undefined&&_sel.aspd&&_sel.ablk&&(be||(_sel.adef&&_sel.aland)));b.onclick=confirmAtk;}
+function refreshAtkBtn(){const b=$("#confirmAtk");if(!b)return;const be=["stuff","offout","backatt","touchdef"].includes(_sel.ablk);b.disabled=!(_sel.atk!==undefined&&_sel.aspd&&_sel.ablk&&(be||(_sel.adef&&_sel.aland)));b.onclick=confirmAtk;}
 function refreshSetBtn(){const b=$("#confirmSet");if(!b)return;b.disabled=!(_sel.setp!==undefined&&_sel.soff&&_sel.sh);b.onclick=confirmSet;}
 function confirmSet(){const tt=S.draft.possession;S.draft.actions.push({skill:"set",team:tt,player:+_sel.setp,net:S.tmp.snet,off:_sel.soff,height:_sel.sh});S.tmp.snet=undefined;_sel={};S.phase="attack";renderStep();}
 
@@ -459,14 +461,18 @@ function confirmAtk(){
   const blk=_sel.ablk, def=_sel.adef, land=_sel.aland;
   let result;
   if(blk==="stuff")result="block";
-  else if(blk==="touch")result="blocktouch";
-  else if(land==="net"||land==="out")result=(blk==="off")?"block":"err";
+  else if(blk==="offout")result="killblock";
+  else if(blk==="backatt")result="blockback";
+  else if(blk==="touchdef")result="blocktouch";
+  else if(land==="net"||land==="out")result="err";
   else result=def==="no"?"kill":"dug";
   S.draft.actions.push({skill:"attack",team:at,player:+_sel.atk,speed:_sel.aspd,type:_sel.aspd,block:blk,defense:def,landing:land,result,first:!S.draft.touchAfterServe,zone:S.tmp.azone});
   S.tmp.azone=undefined;S.draft.touchAfterServe=true;_sel={};
   if(result==="kill"){endRally(at,"Kill");return;}
+  if(result==="killblock"){endRally(at,"Off-block out");return;}
   if(result==="err"){endRally(oppTeam(at),land==="net"?"Attack into net":"Attack out");return;}
-  if(result==="block"){S.draft.actions.push({skill:"block",team:oppTeam(at),player:null});endRally(oppTeam(at),blk==="stuff"?"Stuff block":"Blocked out");return;}
+  if(result==="block"){S.draft.actions.push({skill:"block",team:oppTeam(at),player:null});endRally(oppTeam(at),"Stuff block");return;}
+  if(result==="blockback"){S.draft.actions.push({skill:"block",team:oppTeam(at),player:null,touch:true});S.phase="attack";renderStep();return;}
   if(result==="blocktouch"){S.draft.actions.push({skill:"block",team:oppTeam(at),player:null,touch:true});S.draft.possession=oppTeam(at);S.phase="attack";renderStep();return;}
   S.draft.actions.push({skill:"dig",team:oppTeam(at),player:null});S.draft.possession=oppTeam(at);S.phase="attack";renderStep();
 }
@@ -662,13 +668,13 @@ function computeStats(){
     T[r.serveTeam].srvPoss++; T[oppTeam(r.serveTeam)].recPoss++;
     if(r.winner===r.serveTeam)T[r.serveTeam].srvPts++; else T[oppTeam(r.serveTeam)].sideouts++;
     const firstAtk=r.actions.find(a=>a.skill==="attack"&&a.first);
-    if(firstAtk&&firstAtk.team===oppTeam(r.serveTeam)&&firstAtk.result==="kill"&&r.winner===oppTeam(r.serveTeam))T[oppTeam(r.serveTeam)].foSideouts++;
+    if(firstAtk&&firstAtk.team===oppTeam(r.serveTeam)&&(firstAtk.result==="kill"||firstAtk.result==="killblock")&&r.winner===oppTeam(r.serveTeam))T[oppTeam(r.serveTeam)].foSideouts++;
     r.actions.forEach(a=>{
       if(a.player==null||a.player===undefined)return;
       const p=P[a.team][a.player];
       if(a.skill==="serve"){p.serves++;if(a.result==="ace")p.aces++;if(a.result==="err")p.serveErr++;}
       if(a.skill==="reception"){p.rec++;p.recSum+=a.quality;if(a.quality===3)p.recPerf++;if(a.quality===0)p.recErr++;}
-      if(a.skill==="attack"){p.atk++;if(a.result==="kill")p.kills++;if(a.result==="err")p.atkErr++;if(a.result==="block")p.blocked++;if(a.first){p.firstBallAtk++;if(a.result==="kill")p.firstBallKill++;}}
+      if(a.skill==="attack"){p.atk++;if(a.result==="kill"||a.result==="killblock")p.kills++;if(a.result==="err")p.atkErr++;if(a.result==="block")p.blocked++;if(a.first){p.firstBallAtk++;if(a.result==="kill"||a.result==="killblock")p.firstBallKill++;}}
     });
   });
   return {P,T};
@@ -687,7 +693,7 @@ function conditionsBlock(){
 }
 function placementHeat(t,skill){
   const z={};let withZone=0;
-  S.rallies.forEach(r=>r.actions.forEach(s=>{if(s.skill!==skill||s.team!==t||!s.zone)return;withZone++;const zk=(''+s.zone).replace(/[^0-9]/g,'')||'5';z[zk]=z[zk]||{n:0,a:0,e:0};z[zk].n++;if(s.result==='ace'||s.result==='kill')z[zk].a++;if(s.result==='err')z[zk].e++;}));
+  S.rallies.forEach(r=>r.actions.forEach(s=>{if(s.skill!==skill||s.team!==t||!s.zone)return;withZone++;const zk=(''+s.zone).replace(/[^0-9]/g,'')||'5';z[zk]=z[zk]||{n:0,a:0,e:0};z[zk].n++;if(s.result==='ace'||s.result==='kill'||s.result==='killblock')z[zk].a++;if(s.result==='err')z[zk].e++;}));
   if(withZone===0) return `<div class="muted" style="font-size:12px">${teamName(t)}: none located.</div>`;
   const max=Math.max(...Object.values(z).map(o=>o.n),1);
   const cells=[1,2,3,4,5,6,7,8,9].map(i=>{const o=z[i]||{n:0,a:0,e:0};const al=o.n/max;const bg=`rgba(10,124,138,${(0.12+0.78*al).toFixed(2)})`;
@@ -730,7 +736,7 @@ function valueStats(){
     if(sv&&D[sv.team].serve[sv.type]){const b=D[sv.team].serve[sv.type];b.n++;if(r.winner===sv.team)b.pt++;if(sv.result==='ace')b.ace++;if(sv.result==='err')b.err++;}
     const rc=r.actions.find(a=>a.skill==='reception');
     if(rc&&D[rc.team].pass[rc.quality]){D[rc.team].pass[rc.quality].n++;if(r.winner===rc.team)D[rc.team].pass[rc.quality].c++;}
-    r.actions.filter(a=>a.skill==='attack').forEach(a=>{const b=D[a.team].atk[a.type];if(b){b.n++;if(a.result==='kill')b.kill++;if(a.result==='err')b.err++;if(a.result==='block')b.blk++;}});
+    r.actions.filter(a=>a.skill==='attack').forEach(a=>{const b=D[a.team].atk[a.type];if(b){b.n++;if(a.result==='kill'||a.result==='killblock')b.kill++;if(a.result==='err')b.err++;if(a.result==='block')b.blk++;}});
   });
   return D;
 }
@@ -869,7 +875,7 @@ function gatherTeam(name){const styp=["float","jfloat","jump"],atyp=["hard","sof
     m.rallies.forEach(r=>{D.rallies++;
       const sv=r.actions.find(a=>a.skill==='serve'&&a.team===side);if(sv&&D.serve[sv.type]){const b=D.serve[sv.type];b.n++;if(r.winner===side)b.pt++;if(sv.result==='ace')b.ace++;if(sv.result==='err')b.err++;}
       const rc=r.actions.find(a=>a.skill==='reception'&&a.team===side);if(rc&&D.pass[rc.quality]){D.pass[rc.quality].n++;if(r.winner===side)D.pass[rc.quality].c++;}
-      r.actions.forEach(a=>{if(a.skill==='attack'&&a.team===side&&D.atk[a.type]){const b=D.atk[a.type];b.n++;if(a.result==='kill')b.kill++;if(a.result==='err')b.err++;if(a.result==='block')b.blk++;}});});});
+      r.actions.forEach(a=>{if(a.skill==='attack'&&a.team===side&&D.atk[a.type]){const b=D.atk[a.type];b.n++;if(a.result==='kill'||a.result==='killblock')b.kill++;if(a.result==='err')b.err++;if(a.result==='block')b.blk++;}});});});
   return D;}
 function generateBrief(name){const D=gatherTeam(name);if(!D.rallies)return '<p class="muted">No data for '+name+'.</p>';
   const styp=["float","jfloat","jump"],atyp=["hard","soft"];const sN={float:'float',jfloat:'jump-float',jump:'jump'},aN={hard:'hard attack',soft:'soft / shot'};
@@ -1028,15 +1034,17 @@ function loadDemo(){
         const ar=Math.random();let result;
         if(ar< (first? (rq>=2?0.55:0.40):0.45))result="kill";
         else if(ar<0.62)result="err";
-        else if(ar<0.72)result=(Math.random()<0.75?"block":"blocktouch");
+        else if(ar<0.74){const r2=Math.random();result=r2<0.4?"block":(r2<0.55?"killblock":(r2<0.78?"blocktouch":"blockback"));}
         else result="dug";
         const landing=result==='err'?rnd(['out','net']):'in';
         const defense=result==='dug'?'yes':'no';
-        const block=result==='block'?(Math.random()<0.6?'stuff':'off'):(result==='blocktouch'?'touch':rnd(['none','none','past']));
+        const block=result==='block'?'stuff':result==='killblock'?'offout':result==='blocktouch'?'touchdef':result==='blockback'?'backatt':rnd(['none','none','past']);
         actions.push({skill:"attack",team:poss,player:atkP,speed,type:speed,result,first,zone:zr(),landing,defense,block});
         if(result==="kill"){winner=poss;reason="Kill";ended=true;}
+        else if(result==="killblock"){winner=poss;reason="Off-block out";ended=true;}
         else if(result==="err"){winner=oppTeam(poss);reason=landing==='net'?"Attack into net":"Attack out";ended=true;}
-        else if(result==="block"){actions.push({skill:"block",team:oppTeam(poss),player:null});winner=oppTeam(poss);reason=block==='stuff'?"Stuff block":"Blocked out";ended=true;}
+        else if(result==="block"){actions.push({skill:"block",team:oppTeam(poss),player:null});winner=oppTeam(poss);reason="Stuff block";ended=true;}
+        else if(result==="blockback"){actions.push({skill:"block",team:oppTeam(poss),player:null,touch:true});first=false;}
         else if(result==="blocktouch"){actions.push({skill:"block",team:oppTeam(poss),player:null,touch:true});poss=oppTeam(poss);first=false;}
         else{actions.push({skill:"dig",team:oppTeam(poss),player:null});poss=oppTeam(poss);first=false;}
       }
