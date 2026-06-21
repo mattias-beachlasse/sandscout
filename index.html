@@ -111,6 +111,10 @@
   .cz .sq:active{transform:scale(.9)}
   .cz .sq.sel{background:var(--ocean)}
   .courtnet{font-size:11px;font-weight:700;color:var(--ocean-deep);text-align:center;margin-bottom:3px}
+  .netstrip{display:grid;grid-template-columns:repeat(8,1fr);gap:3px;max-width:330px;margin:4px 0}
+  .netstrip .ns{aspect-ratio:.6;border:1px solid var(--line);border-radius:5px;background:#fff;font-size:11px;font-weight:700;color:var(--neutral);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+  .netstrip .ns.sel{background:var(--ocean);color:#fff;border-color:var(--ocean)}
+  .netlabel{font-size:11px;font-weight:700;color:var(--ocean-deep);text-align:center}
   .vdock{background:#0d1f24;color:#cfe;border-bottom:1px solid #075c66;position:sticky;top:108px;z-index:18;padding:8px 12px}
   .vdock.collapsed .vbody{display:none}
   .vdock .vhead{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;cursor:pointer}
@@ -140,7 +144,7 @@
 <body>
 <div class="app">
   <header>
-    <div class="brand">🏐 SandScout <small>SS15 · beach scouting</small></div>
+    <div class="brand">🏐 SandScout <small>SS16 · full touch model</small></div>
     <div class="score" id="scoreboard">
       <span class="sets" id="setsA">0</span>
       <span class="s" id="scoreA">0</span>
@@ -334,6 +338,8 @@ let _sel={};
 function chip(label,cls,key,val,sub){return `<div class="opt ${cls||''} ${_sel[key]===val?'sel':''}" data-k="${key}" data-val="${val}">${label}${sub?`<span class="pl">${sub}</span>`:''}</div>`;}
 function zoneGridHTML(id){return `<div class="courtnet">▲ net side</div><div class="courtgrid" id="${id}">`+[1,2,3,4,5,6,7,8,9].map(z=>`<div class="cz"><span class="czn">${z}</span>`+['A','B','C','D'].map(s=>`<button type="button" class="sq" data-zone="${z}" data-sub="${s}" title="${z}${s}"></button>`).join('')+`</div>`).join('')+`</div>`;}
 function wireZoneGrid(id,cb){$$('#'+id+' .sq').forEach(b=>b.onclick=()=>{$$('#'+id+' .sq').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');cb(b.dataset.zone+b.dataset.sub);});}
+function netStripHTML(id){return `<div class="netlabel">← along the net (8 positions) →</div><div class="netstrip" id="${id}">`+[1,2,3,4,5,6,7,8].map(n=>`<button type="button" class="ns" data-net="${n}">${n}</button>`).join('')+`</div>`;}
+function wireNetStrip(id,cb){$$('#'+id+' .ns').forEach(b=>b.onclick=()=>{$$('#'+id+' .ns').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');cb(b.dataset.net);});}
 
 function renderStep(){
   const c=$("#rallyCard");
@@ -354,15 +360,33 @@ function renderStep(){
     const rt=oppTeam(S.servingTeam), players=S.match.players[rt];
     c.innerHTML=
       `<div class="muted" style="margin-bottom:8px">Serve in play → <b>${teamName(rt)}</b> receiving</div>`+
-      `<div class="step"><div class="q">Who received?</div><div class="opts">
+      `<div class="step"><div class="q">Who passed?</div><div class="opts">
          ${chip(players[0],"","recv","0")}${chip(players[1],"","recv","1")}
        </div></div>`+
       `<div class="step"><div class="q">Pass quality</div><div class="opts">
-         ${chip("Perfect","g","rq","3","3 · perfect set options")}${chip("Good","","rq","2","2 · in system")}
-         ${chip("Poor","w","rq","1","1 · limited")}${chip("Overpass","b","rq","0","0 · free ball over")}
+         ${chip("Perfect","g","rq","3","3 · perfect")}${chip("Good","","rq","2","2 · in system")}
+         ${chip("Poor","w","rq","1","1 · limited")}${chip("Overpass","b","rq","0","0 · over")}
        </div></div>`+
-      `<div class="ctrlbar"><button class="btn" id="confirmRecv" disabled>Next → attack</button></div>`;
-    bindChips();refreshRecvBtn();
+      `<div class="step"><div class="q">Where the pass landed (optional)</div>${zoneGridHTML('recvZones')}</div>`+
+      `<div class="ctrlbar"><button class="btn" id="confirmRecv" disabled>Next → set</button></div>`;
+    bindChips();wireZoneGrid('recvZones',v=>S.tmp.rzone=v);refreshRecvBtn();
+  } else if(S.phase==="set"){
+    const tt=S.draft.possession, players=S.match.players[tt];
+    c.innerHTML=
+      `<div class="muted" style="margin-bottom:8px">${teamName(tt)} setting</div>`+
+      `<div class="step"><div class="q">Setter</div><div class="opts">
+         ${chip(players[0],"","setp","0")}${chip(players[1],"","setp","1")}
+       </div></div>`+
+      `<div class="step"><div class="q">Set position along the net</div>${netStripHTML('setNet')}</div>`+
+      `<div class="step"><div class="q">Distance off the net</div><div class="opts">
+         ${chip("Tight","","soff","tight")}${chip("In-system","","soff","mid")}${chip("Off the net","w","soff","off")}
+       </div></div>`+
+      `<div class="step"><div class="q">Set height</div><div class="opts">
+         ${chip("Low / quick","","sh","low")}${chip("Medium","","sh","med")}${chip("High","","sh","high")}
+       </div></div>`+
+      `<div class="ctrlbar"><button class="btn" id="confirmSet" disabled>Next → attack</button><button class="btn ghost" id="skipSet" style="flex:0 0 auto">Skip set</button></div>`;
+    bindChips();wireNetStrip('setNet',v=>S.tmp.snet=v);refreshSetBtn();
+    $("#skipSet").onclick=()=>{S.tmp.snet=undefined;_sel={};S.phase="attack";renderStep();};
   } else if(S.phase==="attack"){
     const at=S.draft.possession, players=S.match.players[at];
     const first=!S.draft.touchAfterServe;
@@ -371,14 +395,19 @@ function renderStep(){
       `<div class="step"><div class="q">Attacker</div><div class="opts">
          ${chip(players[0],"","atk","0")}${chip(players[1],"","atk","1")}
        </div></div>`+
-      `<div class="step"><div class="q">Shot type</div><div class="opts">
-         ${chip("Hard / spike","","atype","hard")}${chip("Shot / cut","","atype","shot")}${chip("Poke / roll","","atype","poke")}
+      `<div class="step"><div class="q">Speed</div><div class="opts">
+         ${chip("Hard","","aspd","hard")}${chip("Soft / shot","","aspd","soft")}
        </div></div>`+
-      `<div class="step"><div class="q">Result</div><div class="opts">
-         ${chip("Kill","g","aresult","kill")}${chip("Dug (in play)","","aresult","dug")}
-         ${chip("Blocked","b","aresult","block")}${chip("Error","b","aresult","err")}
+      `<div class="step"><div class="q">Block</div><div class="opts">
+         ${chip("No block","","ablk","none")}${chip("Past the block","","ablk","past")}${chip("Off the block","","ablk","off")}
        </div></div>`+
-      `<div class="step"><div class="q">Landing spot (optional)</div>${zoneGridHTML('atkZones')}</div>`+
+      `<div class="step"><div class="q">Defence</div><div class="opts">
+         ${chip("Not defended","g","adef","no")}${chip("Defended","","adef","yes")}
+       </div></div>`+
+      `<div class="step"><div class="q">Landing</div><div class="opts">
+         ${chip("In","g","aland","in")}${chip("Out","b","aland","out")}${chip("In the net","b","aland","net")}
+       </div></div>`+
+      `<div class="step"><div class="q">Where it landed (optional)</div>${zoneGridHTML('atkZones')}</div>`+
       `<div class="ctrlbar"><button class="btn" id="confirmAtk" disabled>Confirm</button></div>`;
     bindChips();wireZoneGrid('atkZones',v=>S.tmp.azone=v);refreshAtkBtn();
   }
@@ -387,13 +416,13 @@ function renderStep(){
 function modal(arr){const c={};let best=null,bn=-1;arr.forEach(v=>{c[v]=(c[v]||0)+1;if(c[v]>bn){bn=c[v];best=v;}});return best;}
 function suggestServe(){const st=S.servingTeam;const ty=S.rallies.map(r=>{const s=r.actions.find(a=>a.skill==='serve'&&a.team===st);return s&&s.type;}).filter(Boolean);return {stype:ty.length?modal(ty):'float',sresult:'in'};}
 function suggestRecv(){const rt=oppTeam(S.servingTeam);const qs=[];S.rallies.forEach(r=>r.actions.forEach(a=>{if(a.skill==='reception'&&a.team===rt)qs.push(''+a.quality);}));return {recv:'0',rq:qs.length?modal(qs):'2'};}
-function suggestAtk(){const at=S.draft.possession;const ty=[],re=[];S.rallies.forEach(r=>r.actions.forEach(a=>{if(a.skill==='attack'&&a.team===at){ty.push(a.type);re.push(a.result);}}));return {atk:'0',atype:ty.length?modal(ty):'hard',aresult:re.length?modal(re):'kill'};}
+function suggestAtk(){return {atk:'0',aspd:'hard',ablk:'none',adef:'no',aland:'in'};}
 function applySuggestions(){
   let sug=null;
-  if(S.phase==='serve')sug=suggestServe();else if(S.phase==='reception')sug=suggestRecv();else if(S.phase==='attack')sug=suggestAtk();
+  if(S.phase==='serve')sug=suggestServe();else if(S.phase==='reception')sug=suggestRecv();else if(S.phase==='set')sug={setp:'1',soff:'mid',sh:'med'};else if(S.phase==='attack')sug=suggestAtk();
   if(!sug)return;
   Object.keys(sug).forEach(k=>{_sel[k]=sug[k];const el=document.querySelector('#rallyCard .opt[data-k="'+k+'"][data-val="'+sug[k]+'"]');if(el){el.classList.add('sel');el.classList.add('sug');}});
-  refreshServeBtn();refreshRecvBtn();refreshAtkBtn();
+  refreshServeBtn();refreshRecvBtn();refreshAtkBtn();refreshSetBtn();
   const c=document.getElementById('rallyCard');
   if(c&&!c.querySelector('.sugnote')){const d=document.createElement('div');d.className='sugnote';d.style.cssText='font-size:11px;color:#b9791f;font-weight:700;margin-bottom:8px';d.textContent='✨ SS6: suggested picks pre-filled from this match - adjust if wrong, then Confirm';c.insertBefore(d,c.firstChild);}
 }
@@ -402,12 +431,14 @@ function bindChips(){
     const k=o.dataset.k;
     $$(`#rallyCard .opt[data-k="${k}"]`).forEach(x=>x.classList.remove("sel"));
     o.classList.add("sel");_sel[k]=o.dataset.val;
-    refreshServeBtn();refreshRecvBtn();refreshAtkBtn();
+    refreshServeBtn();refreshRecvBtn();refreshAtkBtn();refreshSetBtn();
   });
 }
 function refreshServeBtn(){const b=$("#confirmServe");if(!b)return;b.disabled=!(_sel.stype&&_sel.sresult);b.onclick=confirmServe;}
 function refreshRecvBtn(){const b=$("#confirmRecv");if(!b)return;b.disabled=!(_sel.recv!==undefined&&_sel.rq!==undefined);b.onclick=confirmRecv;}
-function refreshAtkBtn(){const b=$("#confirmAtk");if(!b)return;b.disabled=!(_sel.atk!==undefined&&_sel.atype&&_sel.aresult);b.onclick=confirmAtk;}
+function refreshAtkBtn(){const b=$("#confirmAtk");if(!b)return;b.disabled=!(_sel.atk!==undefined&&_sel.aspd&&_sel.ablk&&_sel.adef&&_sel.aland);b.onclick=confirmAtk;}
+function refreshSetBtn(){const b=$("#confirmSet");if(!b)return;b.disabled=!(_sel.setp!==undefined&&_sel.soff&&_sel.sh);b.onclick=confirmSet;}
+function confirmSet(){const tt=S.draft.possession;S.draft.actions.push({skill:"set",team:tt,player:+_sel.setp,net:S.tmp.snet,off:_sel.soff,height:_sel.sh});S.tmp.snet=undefined;_sel={};S.phase="attack";renderStep();}
 
 function confirmServe(){
   const st=S.servingTeam;
@@ -418,26 +449,22 @@ function confirmServe(){
 }
 function confirmRecv(){
   const rt=oppTeam(S.servingTeam);
-  S.draft.actions.push({skill:"reception",team:rt,player:+_sel.recv,quality:+_sel.rq});
-  S.draft.possession=rt;_sel={};
-  S.phase="attack";renderStep();
+  S.draft.actions.push({skill:"reception",team:rt,player:+_sel.recv,quality:+_sel.rq,zone:S.tmp.rzone});
+  S.tmp.rzone=undefined;S.draft.possession=rt;_sel={};
+  S.phase="set";renderStep();
 }
 function confirmAtk(){
   const at=S.draft.possession;
-  const res=_sel.aresult;
-  S.draft.actions.push({skill:"attack",team:at,player:+_sel.atk,type:_sel.atype,result:res,first:!S.draft.touchAfterServe,zone:S.tmp.azone});
-  S.tmp.azone=undefined;
-  S.draft.touchAfterServe=true;
-  if(res==="kill"){endRally(at,"Kill");return;}
-  if(res==="err"){endRally(oppTeam(at),"Attack error");return;}
-  if(res==="block"){
-    S.draft.actions.push({skill:"block",team:oppTeam(at),player:null});
-    endRally(oppTeam(at),"Block");return;
-  }
-  if(res==="dug"){
-    S.draft.actions.push({skill:"dig",team:oppTeam(at),player:null});
-    S.draft.possession=oppTeam(at);_sel={};S.phase="attack";renderStep();return;
-  }
+  const land=_sel.aland, def=_sel.adef, blk=_sel.ablk;
+  let result;
+  if(land==="net"||land==="out"){result=(blk==="off")?"block":"err";}
+  else{result=def==="no"?"kill":"dug";}
+  S.draft.actions.push({skill:"attack",team:at,player:+_sel.atk,speed:_sel.aspd,type:_sel.aspd,block:blk,defense:def,landing:land,result,first:!S.draft.touchAfterServe,zone:S.tmp.azone});
+  S.tmp.azone=undefined;S.draft.touchAfterServe=true;_sel={};
+  if(result==="kill"){endRally(at,"Kill");return;}
+  if(result==="err"){endRally(oppTeam(at),land==="net"?"Attack into net":"Attack out");return;}
+  if(result==="block"){S.draft.actions.push({skill:"block",team:oppTeam(at),player:null});endRally(oppTeam(at),"Block");return;}
+  S.draft.actions.push({skill:"dig",team:oppTeam(at),player:null});S.draft.possession=oppTeam(at);S.phase="attack";renderStep();
 }
 function endRally(winner,reason){
   S.draft.winner=winner;S.draft.reason=reason;S.draft.vt=vget();
@@ -479,6 +506,7 @@ function rebuildDraftPhase(){
   if(a.length===0){S.phase="serve";}
   else{const last=a[a.length-1];
     if(last.skill==="serve")S.phase="reception";
+    else if(last.skill==="reception")S.phase="set";
     else S.phase="attack";
     let poss=oppTeam(S.draft.serveTeam);S.draft.touchAfterServe=false;
     a.forEach(x=>{if(x.skill==="attack"){S.draft.touchAfterServe=true;}if(x.skill==="dig"){poss=x.team;}if(x.skill==="reception")poss=x.team;});
@@ -538,7 +566,8 @@ function rallyText(r){
   const bits=r.actions.map(a=>{
     if(a.skill==="serve")return `${playerName(a.team,a.player)} ${a.type} serve${a.result==='ace'?' (ace)':a.result==='err'?' (err)':''}`;
     if(a.skill==="reception")return `rec ${playerName(a.team,a.player)} q${a.quality}`;
-    if(a.skill==="attack")return `${playerName(a.team,a.player)} ${a.type} ${a.result}`;
+    if(a.skill==="attack")return `${playerName(a.team,a.player)} ${a.type||a.speed||''} ${a.result}`;
+    if(a.skill==="set")return `set ${playerName(a.team,a.player)}${a.net?' @net'+a.net:''}`;
     if(a.skill==="dig")return `dig`;
     if(a.skill==="block")return `block`;
     return a.skill;
@@ -661,7 +690,8 @@ function placementHeat(t,skill){
     return `<div class="hc" style="background:${o.n?bg:'#fff'};color:${al>0.5?'#fff':'#14242b'}">${o.n||''}${o.n?`<small style="color:${al>0.5?'#dff':'#3a4f57'}">${o.a?o.a+'+ ':''}${o.e?o.e+'E':''}</small>`:''}</div>`;}).join("");
   return `<div style="margin-bottom:10px"><div class="muted" style="font-size:12px;margin-bottom:4px">${teamName(t)} — ${withZone} located</div><div class="heat">${cells}</div></div>`;
 }
-function serveHeatCard(){return `<div class="card"><h3 style="margin-top:0">Serve-target heatmap <span class="muted">(3×3 zones)</span></h3>${placementHeat("A","serve")}${placementHeat("B","serve")}<h3>Attack landing</h3>${placementHeat("A","attack")}${placementHeat("B","attack")}<p class="legend">Darker = more to that zone. “+” = ace/kill, E = error. Tap the 9-zone × A/B/C/D grid while scouting.</p></div>`;}
+function setNetHeat(t){const c={};let n=0;S.rallies.forEach(r=>r.actions.forEach(a=>{if(a.skill==='set'&&a.team===t&&a.net){c[a.net]=(c[a.net]||0)+1;n++;}}));if(!n)return `<div class="muted" style="font-size:12px">${teamName(t)}: no set positions.</div>`;const max=Math.max(...Object.values(c),1);const cells=[1,2,3,4,5,6,7,8].map(i=>{const v=c[i]||0;const al=v/max;return `<div class="ns" style="background:rgba(10,124,138,${(0.12+0.78*al).toFixed(2)});color:${al>0.5?'#fff':'#14242b'};cursor:default">${v||''}</div>`;}).join('');return `<div style="margin-bottom:8px"><div class="muted" style="font-size:12px;margin-bottom:4px">${teamName(t)} — set positions along net</div><div class="netstrip" style="max-width:330px">${cells}</div></div>`;}
+function serveHeatCard(){return `<div class="card"><h3 style="margin-top:0">Placement maps <span class="muted">(36-cell zones)</span></h3><h3>Serve target</h3>${placementHeat("A","serve")}${placementHeat("B","serve")}<h3>Pass landing</h3>${placementHeat("A","reception")}${placementHeat("B","reception")}<h3>Set position (along net)</h3>${setNetHeat("A")}${setNetHeat("B")}<h3>Attack landing</h3>${placementHeat("A","attack")}${placementHeat("B","attack")}<p class="legend">Darker = more frequent. “+” = ace/kill, E = error.</p></div>`;}
 function clipLibrary(){
   const hasV=S.rallies.some(r=>r.vt!=null);
   const opts=`<option value="all">All skills</option><option value="serve">Serves</option><option value="ace">Aces</option><option value="kill">Kills</option><option value="block">Blocks</option><option value="err">Errors</option>`;
@@ -688,7 +718,7 @@ function refreshClips(){const s=document.getElementById('fSkill').value,t=docume
 window.refreshClips=refreshClips;
 function valueStats(){
   const mk=()=>({serve:{},pass:{3:{n:0,c:0},2:{n:0,c:0},1:{n:0,c:0},0:{n:0,c:0}},atk:{}});
-  const D={A:mk(),B:mk()};const styp=["float","jfloat","jump"],atyp=["hard","shot","poke"];
+  const D={A:mk(),B:mk()};const styp=["float","jfloat","jump"],atyp=["hard","soft"];
   styp.forEach(s=>{D.A.serve[s]={n:0,pt:0,ace:0,err:0};D.B.serve[s]={n:0,pt:0,ace:0,err:0};});
   atyp.forEach(s=>{D.A.atk[s]={n:0,kill:0,err:0,blk:0};D.B.atk[s]={n:0,kill:0,err:0,blk:0};});
   S.rallies.forEach(r=>{
@@ -701,8 +731,8 @@ function valueStats(){
   return D;
 }
 function valueInsights(D){
-  const out=[];const styp=["float","jfloat","jump"],atyp=["hard","shot","poke"];
-  const sN={float:"float",jfloat:"jump-float",jump:"jump"},aN={hard:"hard spike",shot:"cut shot",poke:"poke"};
+  const out=[];const styp=["float","jfloat","jump"],atyp=["hard","soft"];
+  const sN={float:"float",jfloat:"jump-float",jump:"jump"},aN={hard:"hard attack",soft:"soft / shot"};
   ['A','B'].forEach(t=>{const nm=teamName(t);
     let sv=styp.map(s=>Object.assign({s},D[t].serve[s])).filter(o=>o.n>=4).map(o=>(o.xp=o.pt/o.n,o));
     if(sv.length>=2){sv.sort((a,b)=>b.xp-a.xp);const hi=sv[0],lo=sv[sv.length-1];const g=Math.round((hi.xp-lo.xp)*100);
@@ -827,7 +857,7 @@ function saveToLibrary(){if(!S.rallies.length){toast('Nothing to save');return;}
   lib.push({id:Date.now(),name:S.match.name,teamA:S.match.teamA,teamB:S.match.teamB,players:S.match.players,sets:S.sets,date:new Date().toISOString().slice(0,10),rallies:S.rallies});
   libSave(lib);toast('Saved to library ('+lib.length+' matches)');renderReports();}
 function teamList(){const set=new Set();libGet().forEach(m=>{set.add(m.teamA);set.add(m.teamB);});if(S.rallies.length){set.add(S.match.teamA);set.add(S.match.teamB);}return [...set].filter(Boolean);}
-function gatherTeam(name){const styp=["float","jfloat","jump"],atyp=["hard","shot","poke"];
+function gatherTeam(name){const styp=["float","jfloat","jump"],atyp=["hard","soft"];
   const D={serve:{},pass:{3:{n:0,c:0},2:{n:0,c:0},1:{n:0,c:0},0:{n:0,c:0}},atk:{},matches:0,rallies:0};
   styp.forEach(s=>D.serve[s]={n:0,pt:0,ace:0,err:0});atyp.forEach(s=>D.atk[s]={n:0,kill:0,err:0,blk:0});
   const all=libGet().slice();if(S.rallies.length)all.push({teamA:S.match.teamA,teamB:S.match.teamB,rallies:S.rallies});
@@ -838,7 +868,7 @@ function gatherTeam(name){const styp=["float","jfloat","jump"],atyp=["hard","sho
       r.actions.forEach(a=>{if(a.skill==='attack'&&a.team===side&&D.atk[a.type]){const b=D.atk[a.type];b.n++;if(a.result==='kill')b.kill++;if(a.result==='err')b.err++;if(a.result==='block')b.blk++;}});});});
   return D;}
 function generateBrief(name){const D=gatherTeam(name);if(!D.rallies)return '<p class="muted">No data for '+name+'.</p>';
-  const styp=["float","jfloat","jump"],atyp=["hard","shot","poke"];const sN={float:'float',jfloat:'jump-float',jump:'jump'},aN={hard:'hard spike',shot:'cut',poke:'poke'};
+  const styp=["float","jfloat","jump"],atyp=["hard","soft"];const sN={float:'float',jfloat:'jump-float',jump:'jump'},aN={hard:'hard attack',soft:'soft / shot'};
   let sv=styp.map(s=>Object.assign({s},D.serve[s])).filter(o=>o.n>0);const totalSv=sv.reduce((a,o)=>a+o.n,0);sv.sort((a,b)=>b.n-a.n);const mainSv=sv[0];
   const p=D.pass;const so3=p[3].n?Math.round(100*p[3].c/p[3].n):null;const lowN=p[1].n+p[0].n,lowC=p[1].c+p[0].c;const soLow=lowN?Math.round(100*lowC/lowN):null;
   let at=atyp.map(s=>Object.assign({s},D.atk[s])).filter(o=>o.n>=2).map(o=>(o.eff=Math.round(100*(o.kill-o.err-o.blk)/o.n),o));at.sort((a,b)=>b.eff-a.eff);
@@ -986,18 +1016,22 @@ function loadDemo(){
     else{
       actions.push({skill:"serve",team:st,player:srvP,type:stype,result:"in",zone:zr()});
       const recP=rnd([0,1]);const rq=rnd([3,3,2,2,2,1,1,0]);
-      actions.push({skill:"reception",team:rt,player:recP,quality:rq});
+      actions.push({skill:"reception",team:rt,player:recP,quality:rq,zone:zr()});
+      actions.push({skill:"set",team:rt,player:rnd([0,1]),net:""+rnd([1,2,3,4,5,6,7,8]),off:rnd(["tight","mid","off"]),height:rnd(["low","med","high"])});
       let poss=rt,first=true,ended=false,guard=0;
       while(!ended&&guard++<4){
-        const atkP=rnd([0,1]);const atype=rnd(["hard","hard","shot","poke"]);
+        const atkP=rnd([0,1]);const speed=rnd(["hard","hard","soft"]);
         const ar=Math.random();let result;
         if(ar< (first? (rq>=2?0.55:0.40):0.45))result="kill";
         else if(ar<0.62)result="err";
         else if(ar<0.72)result="block";
         else result="dug";
-        actions.push({skill:"attack",team:poss,player:atkP,type:atype,result,first,zone:zr()});
+        const landing=result==='err'?rnd(['out','net']):(result==='block'?'out':'in');
+        const defense=result==='dug'?'yes':'no';
+        const block=result==='block'?'off':rnd(['none','none','past']);
+        actions.push({skill:"attack",team:poss,player:atkP,speed,type:speed,result,first,zone:zr(),landing,defense,block});
         if(result==="kill"){winner=poss;reason="Kill";ended=true;}
-        else if(result==="err"){winner=oppTeam(poss);reason="Attack error";ended=true;}
+        else if(result==="err"){winner=oppTeam(poss);reason=landing==='net'?"Attack into net":"Attack out";ended=true;}
         else if(result==="block"){actions.push({skill:"block",team:oppTeam(poss),player:null});winner=oppTeam(poss);reason="Block";ended=true;}
         else{actions.push({skill:"dig",team:oppTeam(poss),player:null});poss=oppTeam(poss);first=false;}
       }
